@@ -39,6 +39,15 @@
                     Positions
                 </a>
             </li>
+            <!-- Options Terminal - Role-based access (Administrator or Pro Trader) -->
+            {% if session.get('user_role') in ['Administrator', 'Pro Trader'] or not session.get('user_role') %}
+            <li>
+                <a href="{{ url_for('options_bp.options_terminal') }}" 
+                   class="text-base hover:bg-base-200 {{ 'active' if request.endpoint == 'options_bp.options_terminal' }}">
+                    Options Terminal
+                </a>
+            </li>
+            {% endif %}
             <li>
                 <a href="{{ url_for('tv_json_bp.tradingview_json') }}" 
                    class="text-base hover:bg-base-200 {{ 'active' if request.endpoint == 'tv_json_bp.tradingview_json' }}">

@@ -1,0 +1,195 @@
+{% extends "base.html" %}
+
+
+{% block content %}
+<main class="flex min-h-screen flex-col items-center gap-4">
+        <div class="w-full max-w-7xl space-y-4">
+            <!-- TradeControlPanel -->
+            <div class="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-x-4 gap-y-2 items-end p-4 border rounded-lg card">
+                <div>
+                  <label for="exchange">Exchange</label>
+                  <select id="exchange" class="select select-bordered" data-search="true"><option value="nse">NSE</option></select>
+                </div>
+                <div>
+                  <label for="segment">Segment</label>
+                  <select id="segment" class="select select-bordered" data-search="true"><option value="options">Options</option></select>
+                </div>
+                <div>
+                  <label for="symbol">Symbol</label>
+                  <select id="symbol" class="select select-bordered" data-search="true"><option value="nifty">NIFTY</option></select>
+                </div>
+                <div>
+                  <label for="expiry-date">Expiry Date</label>
+                  <select id="expiry-date" class="select select-bordered" data-search="true"><option value="2025-07-03">03-Jul-2025</option></select>
+                </div>
+                <div>
+                  <label for="call-strike">Call Strike</label>
+                  <select id="call-strike" class="select select-bordered" data-search="true"><option value="25600">25600</option></select>
+                </div>
+                <div>
+                  <label for="put-strike">Put Strike</label>
+                  <select id="put-strike" class="select select-bordered" data-search="true"><option value="25600">25600</option></select>
+                </div>
+                
+                <div>
+                  <label for="qty">Qty (In Lot: 1)</label>
+                  <div class="flex">
+                    <input id="qty" value="75" class="rounded-r-none" />
+                    <button class="btn btn-destructive rounded-l-none">Qty</button>
+                  </div>
+                </div>
+                 <div>
+                  <label for="product-type">Product Type</label>
+                  <select id="product-type" class="select select-bordered" data-search="true"><option value="margin">Margin</option></select>
+                </div>
+                <div>
+                  <label for="order-type">Order Type</label>
+                  <select id="order-type" class="select select-bordered" data-search="true"><option value="market-protection">Market Protection</option></select>
+                </div>
+                 <div>
+                  <label for="market-protection">Market Protection %</label>
+                  <select id="market-protection" class="select select-bordered" data-search="true"><option value="1">1%</option></select>
+                </div>
+                <div>
+                  <label>Predefined SL</label>
+                  <div class="flex items-center gap-1">
+                      <input type="checkbox" id="predefined-sl" disabled />
+                      <input class="w-20" disabled/>
+                      <select disabled><option value="pts">Pts.</option></select>
+                  </div>
+                </div>
+                <div>
+                  <label>Predefined Target</label>
+                  <div class="flex items-center gap-1">
+                      <input type="checkbox" id="predefined-target" checked />
+                      <input class="w-20" value="20" />
+                      <select  class="select select-bordered" data-search="true"><option value="pts">Pts.</option></select>
+                  </div>
+                </div>
+
+                <div class="col-span-1 lg:col-span-1">
+                  <label for="position-type">Position Type</label>
+                  <select id="position-type" class="select select-bordered" data-search="true"><option value="f&o">F&O positions only</option></select>
+                  <p class="text-xs text-muted-foreground">Changing type will reset all SL & Target</p>
+                </div>
+                <div>
+                  <label for="position-view">Position View</label>
+                  <select id="position-view" class="select select-bordered" data-search="true"><option value="all">All positions</option></select>
+                </div>
+                <div>
+                  <label>Action</label>
+                  <button class="btn btn-outline w-full border-destructive text-destructive">Show Options List</button>
+                </div>
+                <div class="col-span-full lg:col-start-6 flex items-center justify-end space-x-2">
+                  <input type="checkbox" id="one-click" />
+                  <label for="one-click">One click: Disabled</label>
+                </div>
+              </div>
+
+            <!-- ChartsDisplay -->
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div class="card p-4">
+                    <div class="flex justify-between items-center text-xs text-muted-foreground">
+                        <h3 class="font-bold text-sm text-white">NIFTY 250703 25600 CE</h3>
+                        <span class="font-mono">O: 144 H: 193.55 L: 128.9</span>
+                    </div>
+                    <div class="h-40 mt-2 bg-gray-800 flex items-center justify-center"><span class="text-muted-foreground text-sm">[Chart Area]</span></div>
+                    <div class="text-center mt-2">
+                        <p class="font-bold text-lg">
+                            LTP: <span class="text-primary">170.00</span> <span class="text-xs text-primary">(36.70 / 27.53%)</span>
+                        </p>
+                    </div>
+                    <div class="mt-2 grid grid-cols-1 gap-2">
+                        <button class="btn btn-destructive w-full">Sell Call</button>
+                        <button class="btn btn-primary w-full">Buy Call</button>
+                    </div>
+                </div>
+                <div class="card p-4">
+                     <div class="flex justify-between items-center text-xs text-muted-foreground">
+                        <h3 class="font-bold text-sm text-white">NIFTY 50</h3>
+                        <span class="font-mono">O: 25576.65 H: 25654.2 L: 25523.55</span>
+                    </div>
+                    <div class="h-40 mt-2 bg-gray-800 flex items-center justify-center"><span class="text-muted-foreground text-sm">[Chart Area]</span></div>
+                    <div class="text-center mt-2">
+                        <p class="font-bold text-lg">
+                            LTP: <span class="text-white">25637.80</span> <span class="text-xs text-white">(0.00 / 0.00%)</span>
+                        </p>
+                    </div>
+                    <div class="mt-4 flex flex-col gap-2">
+                        <button class="btn btn-outline border-destructive text-destructive">Close All Positions / F6</button>
+                        <button class="btn btn-outline border-destructive text-destructive">Cancel All Orders / F7</button>
+                        <p class="text-center text-xs text-muted-foreground">Message: -</p>
+                    </div>
+                </div>
+                <div class="card p-4">
+                     <div class="flex justify-between items-center text-xs text-muted-foreground">
+                        <h3 class="font-bold text-sm text-white">NIFTY 250703 25600 PE</h3>
+                        <span class="font-mono">O: 193 H: 201.35 L: 104.3</span>
+                    </div>
+                    <div class="h-40 mt-2 bg-gray-800 flex items-center justify-center"><span class="text-muted-foreground text-sm">[Chart Area]</span></div>
+                    <div class="text-center mt-2">
+                        <p class="font-bold text-lg">
+                            LTP: <span class="text-destructive">107.40</span> <span class="text-xs text-destructive">(-98.75 / -47.90%)</span>
+                        </p>
+                    </div>
+                    <div class="mt-2 grid grid-cols-1 gap-2">
+                        <button class="btn btn-destructive w-full">Sell Put</button>
+                        <button class="btn btn-primary w-full">Buy Put</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- PositionsTable -->
+             <div class="card p-4">
+                <div class="flex justify-between items-center border-b pb-2 mb-2">
+                     <div class="flex space-x-1">
+                        <button class="btn bg-gray-700">Positions</button>
+                        <button class="btn">Order book</button>
+                        <button class="btn">Trade Book</button>
+                        <button class="btn">Holdings</button>
+                        <button class="btn">Funds</button>
+                        <button class="btn">Basket order</button>
+                     </div>
+                     <div class="flex items-center gap-4">
+                         <button class="btn btn-outline">Refresh Data</button>
+                         <div class="flex items-center gap-2">
+                             <span class="text-sm text-muted-foreground">MTM:</span>
+                             <span class="font-bold">0.00</span>
+                         </div>
+                     </div>
+                </div>
+                 <div class="mb-2 text-sm font-bold">
+                    Net Qty: 0
+                </div>
+                <div class="border rounded-lg">
+                     <table class="table">
+                        <thead>
+                            <tr>
+                                <th class="w-[50px]"><input type="checkbox" /></th>
+                                <th>Symbol Name</th>
+                                <th>S</th>
+                                <th>Net Qty</th>
+                                <th>Avg Price</th>
+                                <th>LTP</th>
+                                <th>SL</th>
+                                <th>Set SL</th>
+                                <th>Target</th>
+                                <th>Set Target</th>
+                                <th>R. P&L</th>
+                                <th>UR. P&L</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td colspan="12" class="text-center h-24 text-muted-foreground">
+                                    No positions
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </main>
+
+{% endblock %}
