@@ -7,7 +7,7 @@ import time
 
 # Initialize feed client with explicit parameters
 client = api(
-    api_key="7653f710c940cdf1d757b5a7d808a60f43bc7e9c0239065435861da2869ec0fc",  # Replace with your API key
+    api_key="14ec9b904ad5ff8e15769510881ebed4f4add0c74e5c046dda690582cf49e906",  # Replace with your API key
     host="http://127.0.0.1:5000",  # Replace with your API host
     ws_url="ws://127.0.0.1:8765"  # Explicit WebSocket URL (can be different from REST API host)
 )
@@ -15,7 +15,7 @@ client = api(
 # MCX instruments for testing
 instruments_list = [
 
-    {"exchange": "NSE", "symbol": "TCS"}
+    {"exchange": "NSE", "symbol": "NIFTY"}
 ]
 
 def on_data_received(data):

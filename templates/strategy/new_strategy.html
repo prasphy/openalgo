@@ -10,6 +10,7 @@
             
             <form method="POST" class="space-y-6">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                
                 <!-- Strategy Name -->
                 <div class="form-control w-full">
                     <label class="label">
@@ -35,64 +36,164 @@
                         <option value="python">Python</option>
                         <option value="metatrader">Metatrader</option>
                         <option value="excel">Excel</option>
+                        <option value="custom">Custom Strategy</option>
                         <option value="others">Others</option>
                     </select>
                 </div>
 
-                <!-- Strategy Type -->
-                <div class="form-control">
-                    <label class="label">
-                        <span class="label-text">Strategy Type</span>
-                    </label>
-                    <select name="type" class="select select-bordered" id="strategyType">
-                        <option value="intraday">Intraday</option>
-                        <option value="positional">Positional</option>
-                    </select>
-                </div>
+                <!-- Custom Strategy Configuration (hidden by default) -->
+                <div id="customStrategyConfig" class="hidden space-y-4 p-4 bg-base-200 rounded-lg">
+                    <h3 class="text-lg font-semibold">Custom Strategy Configuration</h3>
+                    
+                    <!-- Strategy File Selection -->
+                    <div class="form-control w-full">
+                        <label class="label">
+                            <span class="label-text">Strategy File</span>
+                        </label>
+                        <select name="strategy_file" id="strategyFile" class="select select-bordered w-full">
+                            <option value="">Select a strategy file...</option>
+                            {% if custom_strategies %}
+                                {% for strategy in custom_strategies %}
+                                    <optgroup label="{{ strategy.category|title }}">
+                                        <option value="{{ strategy.name }}.py" data-category="{{ strategy.category }}">
+                                            {{ strategy.display_name }} - {{ strategy.description }}
+                                        </option>
+                                    </optgroup>
+                                {% endfor %}
+                            {% endif %}
+                        </select>
+                        <label class="label">
+                            <span class="label-text-alt">Choose from available custom strategy files</span>
+                        </label>
+                    </div>
 
-                <!-- Trading Mode -->
-                <div class="form-control">
-                    <label class="label">
-                        <span class="label-text">Trading Mode</span>
-                        <span class="label-text-alt">
-                            <div class="tooltip" data-tip="LONG: Only long trades (BUY to enter, SELL to exit). SHORT: Only short trades (SELL to enter, BUY to exit). BOTH: Both long and short trades (requires position size)">
-                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" class="w-4 h-4 stroke-current"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                    <!-- Strategy Category (auto-filled) -->
+                    <input type="hidden" name="strategy_category" id="strategyCategory" value="user_strategies">
+
+                    <!-- Execution Mode -->
+                    <div class="form-control w-full">
+                        <label class="label">
+                            <span class="label-text">Execution Mode</span>
+                            <span class="label-text-alt">
+                                <div class="tooltip" data-tip="Immediate: Execute when called. Queue: Add to execution queue. Schedule: Execute at regular intervals">
+                                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" class="w-4 h-4 stroke-current"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                                </div>
+                            </span>
+                        </label>
+                        <select name="execution_mode" id="executionMode" class="select select-bordered w-full">
+                            <option value="immediate">Immediate</option>
+                            <option value="queue">Queue</option>
+                            <option value="schedule">Schedule</option>
+                        </select>
+                    </div>
+
+                    <!-- Schedule Configuration (hidden by default) -->
+                    <div id="scheduleConfig" class="hidden space-y-3 p-3 bg-base-300 rounded">
+                        <h4 class="font-medium">Schedule Configuration</h4>
+                        
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                            <div class="form-control">
+                                <label class="label">
+                                    <span class="label-text">Interval Type</span>
+                                </label>
+                                <select name="schedule_interval_type" class="select select-bordered select-sm">
+                                    <option value="minutes">Minutes</option>
+                                    <option value="hours">Hours</option>
+                                    <option value="daily">Daily</option>
+                                </select>
                             </div>
-                        </span>
-                    </label>
-                    <select name="trading_mode" class="select select-bordered" id="tradingMode">
-                        <option value="LONG">LONG Only</option>
-                        <option value="SHORT">SHORT Only</option>
-                        <option value="BOTH">BOTH (Long & Short)</option>
-                    </select>
-                    <label class="label">
-                        <span class="label-text-alt text-warning" id="tradingModeHint"></span>
-                    </label>
-                </div>
-
-                <!-- Trading Times (for intraday) -->
-                <div id="tradingTimes" class="space-y-4">
-                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div class="form-control">
-                            <label class="label">
-                                <span class="label-text">Start Time</span>
-                            </label>
-                            <input type="time" name="start_time" class="input input-bordered" value="09:15">
+                            
+                            <div class="form-control">
+                                <label class="label">
+                                    <span class="label-text">Interval Value</span>
+                                </label>
+                                <input type="number" name="schedule_interval_value" class="input input-bordered input-sm" min="1" value="5">
+                            </div>
                         </div>
                         
                         <div class="form-control">
                             <label class="label">
-                                <span class="label-text">End Time</span>
+                                <span class="label-text">Time (for daily execution)</span>
                             </label>
-                            <input type="time" name="end_time" class="input input-bordered" value="15:00">
+                            <input type="time" name="schedule_time" class="input input-bordered input-sm" value="09:30">
                         </div>
                     </div>
-                    
+
+                    <!-- Strategy Parameters -->
+                    <div class="form-control w-full">
+                        <label class="label">
+                            <span class="label-text">Strategy Parameters (JSON)</span>
+                            <span class="label-text-alt">
+                                <div class="tooltip" data-tip="Optional: Configuration parameters for your strategy in JSON format">
+                                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" class="w-4 h-4 stroke-current"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                                </div>
+                            </span>
+                        </label>
+                        <textarea name="strategy_params" id="strategyParams" class="textarea textarea-bordered" rows="4" 
+                                  placeholder='{"symbols": ["RELIANCE", "TCS"], "exchange": "NSE", "short_period": 9, "long_period": 21}'></textarea>
+                        <label class="label">
+                            <span class="label-text-alt">Common parameters: symbols, exchange, periods, thresholds</span>
+                        </label>
+                    </div>
+                </div>
+
+                <!-- Traditional Strategy Configuration -->
+                <div id="traditionalStrategyConfig" class="space-y-4">
+                    <!-- Strategy Type -->
                     <div class="form-control">
                         <label class="label">
-                            <span class="label-text">Square Off Time</span>
+                            <span class="label-text">Strategy Type</span>
                         </label>
-                        <input type="time" name="squareoff_time" class="input input-bordered" value="15:15">
+                        <select name="type" class="select select-bordered" id="strategyType">
+                            <option value="intraday">Intraday</option>
+                            <option value="positional">Positional</option>
+                        </select>
+                    </div>
+
+                    <!-- Trading Mode -->
+                    <div class="form-control">
+                        <label class="label">
+                            <span class="label-text">Trading Mode</span>
+                            <span class="label-text-alt">
+                                <div class="tooltip" data-tip="LONG: Only long trades (BUY to enter, SELL to exit). SHORT: Only short trades (SELL to enter, BUY to exit). BOTH: Both long and short trades (requires position size)">
+                                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" class="w-4 h-4 stroke-current"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                                </div>
+                            </span>
+                        </label>
+                        <select name="trading_mode" class="select select-bordered" id="tradingMode">
+                            <option value="LONG">LONG Only</option>
+                            <option value="SHORT">SHORT Only</option>
+                            <option value="BOTH">BOTH (Long & Short)</option>
+                        </select>
+                        <label class="label">
+                            <span class="label-text-alt text-warning" id="tradingModeHint"></span>
+                        </label>
+                    </div>
+
+                    <!-- Trading Times (for intraday) -->
+                    <div id="tradingTimes" class="space-y-4">
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div class="form-control">
+                                <label class="label">
+                                    <span class="label-text">Start Time</span>
+                                </label>
+                                <input type="time" name="start_time" class="input input-bordered" value="09:15">
+                            </div>
+                            
+                            <div class="form-control">
+                                <label class="label">
+                                    <span class="label-text">End Time</span>
+                                </label>
+                                <input type="time" name="end_time" class="input input-bordered" value="15:00">
+                            </div>
+                        </div>
+                        
+                        <div class="form-control">
+                            <label class="label">
+                                <span class="label-text">Square Off Time</span>
+                            </label>
+                            <input type="time" name="squareoff_time" class="input input-bordered" value="15:15">
+                        </div>
                     </div>
                 </div>
 
@@ -115,12 +216,45 @@ document.addEventListener('DOMContentLoaded', function() {
     const platform = document.getElementById('platform');
     const strategyName = document.getElementById('strategyName');
     const finalName = document.getElementById('finalName');
+    const customStrategyConfig = document.getElementById('customStrategyConfig');
+    const traditionalStrategyConfig = document.getElementById('traditionalStrategyConfig');
+    const executionMode = document.getElementById('executionMode');
+    const scheduleConfig = document.getElementById('scheduleConfig');
+    const strategyFile = document.getElementById('strategyFile');
+    const strategyCategory = document.getElementById('strategyCategory');
+    const strategyParams = document.getElementById('strategyParams');
+    
+    function togglePlatformConfig() {
+        const isCustom = platform.value === 'custom';
+        
+        if (isCustom) {
+            customStrategyConfig.classList.remove('hidden');
+            traditionalStrategyConfig.classList.add('hidden');
+            // Make custom strategy fields required
+            if (strategyFile) strategyFile.required = true;
+        } else {
+            customStrategyConfig.classList.add('hidden');
+            traditionalStrategyConfig.classList.remove('hidden');
+            // Remove required from custom strategy fields
+            if (strategyFile) strategyFile.required = false;
+        }
+        
+        updateFinalName();
+    }
     
     function toggleTradingTimes() {
         if (strategyType.value === 'intraday') {
             tradingTimes.classList.remove('hidden');
         } else {
             tradingTimes.classList.add('hidden');
+        }
+    }
+    
+    function toggleScheduleConfig() {
+        if (executionMode.value === 'schedule') {
+            scheduleConfig.classList.remove('hidden');
+        } else {
+            scheduleConfig.classList.add('hidden');
         }
     }
     
@@ -138,17 +272,116 @@ document.addEventListener('DOMContentLoaded', function() {
     function updateFinalName() {
         const platformValue = platform.value;
         const nameValue = strategyName.value;
-        finalName.textContent = platformValue && nameValue ? `${platformValue}_${nameValue}` : 'platform_strategyname';
+        
+        if (platformValue === 'custom') {
+            finalName.textContent = nameValue || 'custom_strategy_name';
+        } else {
+            finalName.textContent = platformValue && nameValue ? `${platformValue}_${nameValue}` : 'platform_strategyname';
+        }
     }
     
+    function updateStrategyCategory() {
+        const selectedOption = strategyFile.options[strategyFile.selectedIndex];
+        if (selectedOption && selectedOption.dataset.category) {
+            strategyCategory.value = selectedOption.dataset.category;
+        }
+    }
+    
+    function populateExampleParams() {
+        const selectedFile = strategyFile.value;
+        let exampleParams = {};
+        
+        // Provide example parameters based on strategy type
+        if (selectedFile.includes('ema_crossover')) {
+            exampleParams = {
+                "symbols": ["RELIANCE", "TCS", "INFY"],
+                "exchange": "NSE",
+                "short_period": 9,
+                "long_period": 21,
+                "lookback_days": 30
+            };
+        } else if (selectedFile.includes('rsi_strategy')) {
+            exampleParams = {
+                "symbols": ["RELIANCE", "TCS", "INFY"],
+                "exchange": "NSE",
+                "rsi_period": 14,
+                "oversold_level": 30,
+                "recovery_level": 35,
+                "lookback_days": 40
+            };
+        } else if (selectedFile.includes('momentum_strategy')) {
+            exampleParams = {
+                "symbols": ["RELIANCE", "TCS", "INFY"],
+                "exchange": "NSE",
+                "momentum_period": 5,
+                "min_price_change": 3.0,
+                "volume_multiplier": 1.5,
+                "near_high_threshold": 0.95,
+                "lookback_days": 30
+            };
+        } else if (selectedFile.includes('mean_reversion')) {
+            exampleParams = {
+                "symbols": ["RELIANCE", "TCS", "INFY"],
+                "exchange": "NSE",
+                "ma_period": 20,
+                "std_period": 20,
+                "entry_threshold": -2.0,
+                "max_deviation": -2.5,
+                "volume_confirm": true,
+                "lookback_days": 50
+            };
+        } else {
+            exampleParams = {
+                "symbols": ["RELIANCE", "TCS", "INFY"],
+                "exchange": "NSE"
+            };
+        }
+        
+        if (Object.keys(exampleParams).length > 0) {
+            strategyParams.value = JSON.stringify(exampleParams, null, 2);
+        }
+    }
+    
+    // Event listeners
+    platform.addEventListener('change', togglePlatformConfig);
     strategyType.addEventListener('change', toggleTradingTimes);
     tradingMode.addEventListener('change', updateTradingModeHint);
-    platform.addEventListener('change', updateFinalName);
     strategyName.addEventListener('input', updateFinalName);
+    executionMode.addEventListener('change', toggleScheduleConfig);
+    strategyFile.addEventListener('change', function() {
+        updateStrategyCategory();
+        populateExampleParams();
+    });
     
+    // Initialize
+    togglePlatformConfig();
     toggleTradingTimes();
     updateTradingModeHint();
     updateFinalName();
+    toggleScheduleConfig();
+    
+    // Form validation for custom strategies
+    document.querySelector('form').addEventListener('submit', function(e) {
+        if (platform.value === 'custom') {
+            // Validate JSON parameters
+            try {
+                if (strategyParams.value.trim()) {
+                    JSON.parse(strategyParams.value);
+                }
+            } catch (error) {
+                e.preventDefault();
+                alert('Invalid JSON in strategy parameters. Please check the format.');
+                return false;
+            }
+            
+            // Validate strategy file selection
+            if (!strategyFile.value) {
+                e.preventDefault();
+                alert('Please select a strategy file for custom strategies.');
+                return false;
+            }
+        }
+    });
 });
 </script>
 {% endblock %}

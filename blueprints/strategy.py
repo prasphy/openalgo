@@ -4,7 +4,8 @@ from database.strategy_db import (
     create_strategy, add_symbol_mapping, get_strategy_by_webhook_id,
     get_symbol_mappings, get_all_strategies, delete_strategy,
     update_strategy_times, delete_symbol_mapping, bulk_add_symbol_mappings,
-    toggle_strategy, get_strategy, get_user_strategies
+    toggle_strategy, get_strategy, get_user_strategies, create_custom_strategy,
+    update_strategy_config
 )
 from database.symbol import enhanced_search_symbols
 from database.auth_db import get_api_key_for_tradingview
@@ -30,6 +31,7 @@ logger = get_logger(__name__)
 # Rate limiting configuration
 WEBHOOK_RATE_LIMIT = os.getenv("WEBHOOK_RATE_LIMIT", "100 per minute")
 STRATEGY_RATE_LIMIT = os.getenv("STRATEGY_RATE_LIMIT", "200 per minute")
+CUSTOM_STRATEGY_RATE_LIMIT = os.getenv("CUSTOM_STRATEGY_RATE_LIMIT", "50 per minute")
 
 strategy_bp = Blueprint('strategy_bp', __name__, url_prefix='/strategy')
 
@@ -315,7 +317,11 @@ def new_strategy():
                 flash('Please select a platform', 'error')
                 return redirect(url_for('strategy_bp.new_strategy'))
 
-            # Create prefixed strategy name
+            # Handle custom strategy creation
+            if platform == 'custom':
+                return handle_custom_strategy_creation(user_id, name)
+
+            # Create prefixed strategy name for non-custom strategies
             name = f"{platform}_{name}"
 
             # Get other form data
@@ -369,7 +375,113 @@ def new_strategy():
             flash('Error creating strategy', 'error')
             return redirect(url_for('strategy_bp.new_strategy'))
     
-    return render_template('strategy/new_strategy.html')
+    # For GET request, get available custom strategies
+    try:
+        from custom_strategies import StrategyLoader
+        loader = StrategyLoader()
+        available_strategies = loader.get_strategy_list()
+    except Exception as e:
+        logger.error(f"Error loading custom strategies: {str(e)}")
+        available_strategies = []
+    
+    return render_template('strategy/new_strategy.html', custom_strategies=available_strategies)
+
+def handle_custom_strategy_creation(user_id, name):
+    """Handle creation of custom strategy"""
+    try:
+        # Get custom strategy specific form data
+        strategy_file = request.form.get('strategy_file', '').strip()
+        strategy_category = request.form.get('strategy_category', 'user_strategies').strip()
+        execution_mode = request.form.get('execution_mode', 'immediate').strip()
+        
+        # Get strategy configuration parameters
+        strategy_config = {}
+        for key, value in request.form.items():
+            if key.startswith('config_'):
+                config_key = key[7:]  # Remove 'config_' prefix
+                strategy_config[config_key] = value
+        
+        # Get schedule configuration if execution mode is 'schedule'
+        schedule_config = None
+        if execution_mode == 'schedule':
+            schedule_config = {
+                'interval_type': request.form.get('schedule_interval_type', 'minutes'),
+                'interval_value': int(request.form.get('schedule_interval_value', 5)),
+                'time': request.form.get('schedule_time', '09:30')
+            }
+        
+        # Validate custom strategy fields
+        if not strategy_file:
+            flash('Please select a custom strategy file', 'error')
+            return redirect(url_for('strategy_bp.new_strategy'))
+        
+        if not name:
+            flash('Strategy name is required', 'error')
+            return redirect(url_for('strategy_bp.new_strategy'))
+        
+        # Validate strategy name
+        valid, error_msg = validate_strategy_name(name)
+        if not valid:
+            flash(error_msg, 'error')
+            return redirect(url_for('strategy_bp.new_strategy'))
+        
+        # Validate the strategy file exists and is valid
+        from custom_strategies import StrategyLoader, StrategyValidator
+        loader = StrategyLoader()
+        validator = StrategyValidator()
+        
+        # Check if strategy file exists
+        strategy_class = loader.load_strategy(
+            strategy_file.replace('.py', ''), 
+            strategy_category
+        )
+        
+        if not strategy_class:
+            flash(f'Invalid strategy file: {strategy_file}', 'error')
+            return redirect(url_for('strategy_bp.new_strategy'))
+        
+        # Validate the strategy class
+        if not loader.validate_strategy(strategy_class):
+            flash('Strategy class validation failed', 'error')
+            return redirect(url_for('strategy_bp.new_strategy'))
+        
+        # Generate webhook ID
+        webhook_id = str(uuid.uuid4())
+        
+        # Create custom strategy
+        strategy = create_custom_strategy(
+            name=name,
+            webhook_id=webhook_id,
+            user_id=user_id,
+            strategy_file=strategy_file,
+            strategy_category=strategy_category,
+            execution_mode=execution_mode,
+            schedule_config=schedule_config,
+            strategy_config=strategy_config
+        )
+        
+        if strategy:
+            flash('Custom strategy created successfully!', 'success')
+            
+            # If it's a scheduled strategy, set up the schedule
+            if execution_mode == 'schedule':
+                try:
+                    from custom_strategies import get_strategy_executor
+                    executor = get_strategy_executor()
+                    executor.schedule_strategy_execution(strategy.id, schedule_config)
+                except Exception as e:
+                    logger.error(f"Error scheduling strategy: {str(e)}")
+                    flash('Strategy created but scheduling failed', 'warning')
+            
+            return redirect(url_for('strategy_bp.view_strategy', strategy_id=strategy.id))
+        else:
+            flash('Error creating custom strategy', 'error')
+            return redirect(url_for('strategy_bp.new_strategy'))
+            
+    except Exception as e:
+        logger.error(f'Error creating custom strategy: {str(e)}')
+        flash(f'Error creating custom strategy: {str(e)}', 'error')
+        return redirect(url_for('strategy_bp.new_strategy'))
 
 @strategy_bp.route('/<int:strategy_id>')
 def view_strategy(strategy_id):
@@ -388,9 +500,20 @@ def view_strategy(strategy_id):
     
     symbol_mappings = get_symbol_mappings(strategy_id)
     
+    # Get execution history for custom strategies
+    execution_history = []
+    if strategy.strategy_type == 'custom':
+        try:
+            from custom_strategies import get_strategy_executor
+            executor = get_strategy_executor()
+            execution_history = executor.get_execution_history(strategy_id, limit=10)
+        except Exception as e:
+            logger.error(f"Error getting execution history: {str(e)}")
+    
     return render_template('strategy/view_strategy.html', 
                          strategy=strategy,
-                         symbol_mappings=symbol_mappings)
+                         symbol_mappings=symbol_mappings,
+                         execution_history=execution_history)
 
 @strategy_bp.route('/toggle/<int:strategy_id>', methods=['POST'])
 def toggle_strategy_route(strategy_id):
@@ -404,6 +527,17 @@ def toggle_strategy_route(strategy_id):
             if strategy.is_active:
                 # Schedule squareoff if being activated
                 schedule_squareoff(strategy_id)
+                
+                # For custom strategies with scheduled execution, start the schedule
+                if strategy.strategy_type == 'custom' and strategy.execution_mode == 'schedule':
+                    try:
+                        from custom_strategies import get_strategy_executor
+                        executor = get_strategy_executor()
+                        if strategy.schedule_config:
+                            executor.schedule_strategy_execution(strategy_id, strategy.schedule_config)
+                    except Exception as e:
+                        logger.error(f"Error scheduling custom strategy: {str(e)}")
+                
                 flash('Strategy activated successfully', 'success')
             else:
                 # Remove squareoff job if being deactivated
@@ -411,6 +545,16 @@ def toggle_strategy_route(strategy_id):
                     scheduler.remove_job(f'squareoff_{strategy_id}')
                 except Exception:
                     pass
+                
+                # For custom strategies, cancel scheduled execution
+                if strategy.strategy_type == 'custom':
+                    try:
+                        from custom_strategies import get_strategy_executor
+                        executor = get_strategy_executor()
+                        executor.cancel_scheduled_strategy(strategy_id)
+                    except Exception as e:
+                        logger.error(f"Error cancelling custom strategy schedule: {str(e)}")
+                
                 flash('Strategy deactivated successfully', 'success')
             
             return redirect(url_for('strategy_bp.view_strategy', strategy_id=strategy_id))
@@ -444,6 +588,15 @@ def delete_strategy_route(strategy_id):
             scheduler.remove_job(f'squareoff_{strategy_id}')
         except Exception:
             pass
+        
+        # For custom strategies, cancel scheduled execution
+        if strategy.strategy_type == 'custom':
+            try:
+                from custom_strategies import get_strategy_executor
+                executor = get_strategy_executor()
+                executor.cancel_scheduled_strategy(strategy_id)
+            except Exception as e:
+                logger.error(f"Error cancelling custom strategy schedule: {str(e)}")
             
         if delete_strategy(strategy_id):
             return jsonify({'status': 'success'})
@@ -602,6 +755,240 @@ def search_symbols():
         } for result in results]
     })
 
+# Custom Strategy Execution Endpoints
+
+@strategy_bp.route('/execute/<webhook_id>', methods=['POST'])
+@limiter.limit(CUSTOM_STRATEGY_RATE_LIMIT)
+def execute_custom_strategy(webhook_id):
+    """Execute custom strategy endpoint"""
+    try:
+        # Get strategy by webhook ID
+        strategy = get_strategy_by_webhook_id(webhook_id)
+        if not strategy:
+            return jsonify({'error': 'Invalid webhook ID'}), 404
+        
+        # Check if it's a custom strategy
+        if strategy.strategy_type != 'custom':
+            return jsonify({'error': 'Not a custom strategy'}), 400
+        
+        # Check if strategy is active
+        if not strategy.is_active:
+            return jsonify({'error': 'Strategy is inactive'}), 400
+        
+        # Get execution mode from query parameters or use strategy default
+        execution_mode = request.args.get('mode', strategy.execution_mode)
+        
+        # Validate execution mode
+        if execution_mode not in ['immediate', 'queue', 'schedule']:
+            return jsonify({'error': 'Invalid execution mode'}), 400
+        
+        # Get additional parameters from request
+        strategy_params = request.json if request.is_json else {}
+        
+        # Import and get strategy executor
+        from custom_strategies import get_strategy_executor
+        executor = get_strategy_executor()
+        
+        # Execute based on mode
+        if execution_mode == 'immediate':
+            result = executor.execute_strategy_immediate(
+                strategy.id, 
+                strategy_params=strategy_params
+            )
+            
+            if result.success:
+                # Process the signals - place orders for returned symbols
+                order_results = process_strategy_signals(strategy, result.signals)
+                
+                return jsonify({
+                    'status': 'success',
+                    'message': f'Strategy executed successfully',
+                    'signals': result.signals,
+                    'execution_time': result.execution_time,
+                    'orders_placed': len(order_results),
+                    'execution_logs': result.logs
+                }), 200
+            else:
+                return jsonify({
+                    'status': 'error',
+                    'error': result.error,
+                    'execution_logs': result.logs
+                }), 500
+                
+        elif execution_mode == 'queue':
+            success = executor.execute_strategy_queue(
+                strategy.id,
+                strategy_params=strategy_params
+            )
+            
+            if success:
+                return jsonify({
+                    'status': 'success',
+                    'message': 'Strategy queued for execution'
+                }), 202
+            else:
+                return jsonify({
+                    'status': 'error',
+                    'error': 'Failed to queue strategy'
+                }), 500
+                
+        elif execution_mode == 'schedule':
+            # Get schedule configuration from request or use strategy default
+            schedule_config = strategy_params.get('schedule_config', strategy.schedule_config)
+            
+            if not schedule_config:
+                return jsonify({
+                    'status': 'error',
+                    'error': 'Schedule configuration required'
+                }), 400
+            
+            success = executor.schedule_strategy_execution(strategy.id, schedule_config)
+            
+            if success:
+                return jsonify({
+                    'status': 'success',
+                    'message': 'Strategy scheduled for execution',
+                    'schedule_config': schedule_config
+                }), 200
+            else:
+                return jsonify({
+                    'status': 'error',
+                    'error': 'Failed to schedule strategy'
+                }), 500
+                
+    except Exception as e:
+        logger.error(f'Error executing custom strategy {webhook_id}: {str(e)}')
+        return jsonify({
+            'status': 'error',
+            'error': 'Internal server error'
+        }), 500
+
+def process_strategy_signals(strategy, signals):
+    """Process trading signals from custom strategy"""
+    try:
+        if not signals:
+            return []
+        
+        # Get API key for the user
+        api_key = get_api_key_for_tradingview(strategy.user_id)
+        if not api_key:
+            logger.error(f'No API key found for strategy {strategy.id}')
+            return []
+        
+        # Get symbol mappings for the strategy
+        mappings = get_symbol_mappings(strategy.id)
+        symbol_map = {mapping.symbol: mapping for mapping in mappings}
+        
+        order_results = []
+        
+        for symbol in signals:
+            # Check if we have a mapping for this symbol
+            if symbol not in symbol_map:
+                logger.warning(f'No mapping found for symbol {symbol} in strategy {strategy.id}')
+                continue
+            
+            mapping = symbol_map[symbol]
+            
+            # Prepare order payload
+            payload = {
+                'apikey': api_key,
+                'symbol': mapping.symbol,
+                'exchange': mapping.exchange,
+                'product': mapping.product_type,
+                'strategy': strategy.name,
+                'action': 'BUY',  # Default action, can be customized
+                'quantity': str(mapping.quantity),
+                'pricetype': 'MARKET',
+                'price': '0',
+                'trigger_price': '0',
+                'disclosed_quantity': '0'
+            }
+            
+            # Queue the order
+            queue_order('placeorder', payload)
+            order_results.append({
+                'symbol': symbol,
+                'action': 'BUY',
+                'quantity': mapping.quantity,
+                'status': 'queued'
+            })
+            
+            logger.info(f'Queued order for {symbol} from custom strategy {strategy.name}')
+        
+        return order_results
+        
+    except Exception as e:
+        logger.error(f'Error processing strategy signals: {str(e)}')
+        return []
+
+@strategy_bp.route('/custom/available', methods=['GET'])
+@check_session_validity
+def get_available_custom_strategies():
+    """Get list of available custom strategies"""
+    try:
+        from custom_strategies import StrategyLoader
+        loader = StrategyLoader()
+        strategies = loader.get_strategy_list()
+        
+        return jsonify({
+            'status': 'success',
+            'strategies': strategies
+        }), 200
+        
+    except Exception as e:
+        logger.error(f'Error getting available custom strategies: {str(e)}')
+        return jsonify({
+            'status': 'error',
+            'error': 'Failed to load available strategies'
+        }), 500
+
+@strategy_bp.route('/custom/<int:strategy_id>/status', methods=['GET'])
+@check_session_validity
+def get_custom_strategy_status(strategy_id):
+    """Get execution status for custom strategy"""
+    try:
+        # Check if user owns the strategy
+        user_id = session.get('user')
+        strategy = get_strategy(strategy_id)
+        
+        if not strategy or strategy.user_id != user_id:
+            return jsonify({'error': 'Strategy not found'}), 404
+        
+        if strategy.strategy_type != 'custom':
+            return jsonify({'error': 'Not a custom strategy'}), 400
+        
+        # Get execution status
+        from custom_strategies import get_strategy_executor
+        executor = get_strategy_executor()
+        
+        execution_history = executor.get_execution_history(strategy_id, limit=10)
+        queue_status = executor.get_queue_status()
+        
+        return jsonify({
+            'status': 'success',
+            'strategy_id': strategy_id,
+            'is_active': strategy.is_active,
+            'execution_mode': strategy.execution_mode,
+            'recent_executions': [
+                {
+                    'timestamp': result.timestamp.isoformat(),
+                    'success': result.success,
+                    'signals': result.signals,
+                    'error': result.error,
+                    'execution_time': result.execution_time
+                }
+                for result in execution_history
+            ],
+            'queue_status': queue_status
+        }), 200
+        
+    except Exception as e:
+        logger.error(f'Error getting custom strategy status: {str(e)}')
+        return jsonify({
+            'status': 'error',
+            'error': 'Failed to get strategy status'
+        }), 500
+
 @strategy_bp.route('/webhook/<webhook_id>', methods=['POST'])
 @limiter.limit(WEBHOOK_RATE_LIMIT)
 def webhook(webhook_id):
@@ -614,6 +1001,12 @@ def webhook(webhook_id):
         if not strategy.is_active:
             return jsonify({'error': 'Strategy is inactive'}), 400
         
+        # Handle custom strategy webhook
+        if strategy.strategy_type == 'custom':
+            # For custom strategies, trigger execution via the custom strategy endpoint
+            return execute_custom_strategy(webhook_id)
+        
+        # Continue with existing webhook logic for traditional strategies
         # Check trading hours for intraday strategies
         if strategy.is_intraday:
             now = datetime.now(pytz.timezone('Asia/Kolkata'))

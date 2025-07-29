@@ -18,6 +18,7 @@ from websocket_proxy.app_integration import start_websocket_proxy
 from blueprints.auth import auth_bp
 from blueprints.dashboard import dashboard_bp
 from blueprints.orders import orders_bp
+from blueprints.options import options_bp  # Import the options blueprint
 from blueprints.search import search_bp
 from blueprints.apikey import api_key_bp
 from blueprints.log import log_bp
@@ -138,6 +139,7 @@ def create_app():
     app.register_blueprint(auth_bp)
     app.register_blueprint(dashboard_bp)
     app.register_blueprint(orders_bp)
+    app.register_blueprint(options_bp)  # Register the options blueprint
     app.register_blueprint(search_bp)
     app.register_blueprint(api_key_bp)
     app.register_blueprint(log_bp)
