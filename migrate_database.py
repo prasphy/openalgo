@@ -46,7 +46,7 @@ def migrate_strategies_table():
         
         # List of new columns to add
         new_columns = [
-            ("strategy_type", "VARCHAR(20) DEFAULT 'webhook'"),
+            ("strategy_type", "VARCHAR(20) DEFAULT 'webhook' CHECK(strategy_type IN ('webhook', 'custom'))"),
             ("strategy_file", "VARCHAR(255)"),
             ("strategy_category", "VARCHAR(50)"),
             ("execution_mode", "VARCHAR(20) DEFAULT 'immediate'"),

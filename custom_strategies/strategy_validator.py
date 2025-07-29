@@ -150,9 +150,9 @@ class StrategyValidator:
                     self.warnings.append("File operation detected - ensure it's necessary")
             elif isinstance(node.func, ast.Attribute):
                 if (isinstance(node.func.value, ast.Name) and 
-                    node.func.value.id == 'os' and 
+                    node.func.value.id in self.os_aliases and 
                     node.func.attr in ['remove', 'rmdir', 'unlink', 'rename']):
-                    self.errors.append(f"Dangerous file operation: os.{node.func.attr}")
+                    self.errors.append(f"Dangerous file operation: {node.func.value.id}.{node.func.attr}")
     
     def _check_network_operations(self, node: ast.AST):
         """

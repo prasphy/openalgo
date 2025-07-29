@@ -41,7 +41,7 @@ def test_strategy_loader():
                     print(f"   ✓ Successfully loaded {strategy_name}")
                     
                     # Test validation
-                    if loader.validate_strategy(strategy_class):
+                    if validator.validate_strategy(strategy_class):
                         print(f"   ✓ Strategy {strategy_name} is valid")
                     else:
                         print(f"   ✗ Strategy {strategy_name} validation failed")
