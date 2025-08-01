@@ -41,15 +41,35 @@ def init_db():
     """Initialize the settings database"""
     logger.info("Initializing Settings DB")
     
+    # Run migration to add SMTP columns if needed
+    try:
+        from database.migrate_settings_db import migrate_settings_database
+        migrate_settings_database()
+    except Exception as e:
+        logger.warning(f"Migration failed, but continuing: {e}")
+    
     # Create tables if they don't exist
     Base.metadata.create_all(bind=engine)
     
     # Create default settings only if no settings exist
-    if not Settings.query.first():
-        logger.info("Creating default settings (Live Mode)")
-        default_settings = Settings(analyze_mode=False)
-        db_session.add(default_settings)
-        db_session.commit()
+    try:
+        if not Settings.query.first():
+            logger.info("Creating default settings (Live Mode)")
+            default_settings = Settings(analyze_mode=False)
+            db_session.add(default_settings)
+            db_session.commit()
+    except Exception as e:
+        logger.error(f"Error creating default settings: {e}")
+        # Try to create the settings table with proper schema
+        Base.metadata.create_all(bind=engine)
+        # Try again
+        try:
+            if not Settings.query.first():
+                default_settings = Settings(analyze_mode=False)
+                db_session.add(default_settings)
+                db_session.commit()
+        except Exception as e2:
+            logger.error(f"Could not create default settings after retry: {e2}")
 
 def get_analyze_mode():
     """Get current analyze mode setting"""

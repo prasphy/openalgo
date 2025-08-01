@@ -33,6 +33,7 @@ from blueprints.latency import latency_bp  # Import the latency blueprint
 from blueprints.strategy import strategy_bp  # Import the strategy blueprint
 from blueprints.master_contract_status import master_contract_status_bp  # Import the master contract status blueprint
 from blueprints.websocket_example import websocket_bp  # Import the websocket example blueprint
+from blueprints.trading_mode import trading_mode_bp  # Import the trading mode blueprint
 
 from restx_api import api_v1_bp, api
 
@@ -46,6 +47,7 @@ from database.chartink_db import init_db as ensure_chartink_tables_exists
 from database.traffic_db import init_logs_db as ensure_traffic_logs_exists
 from database.latency_db import init_latency_db as ensure_latency_tables_exists
 from database.strategy_db import init_db as ensure_strategy_tables_exists
+from database.paper_trading_db import init_paper_trading_db as ensure_paper_trading_tables_exists
 
 from utils.plugin_loader import load_broker_auth_functions
 
@@ -154,6 +156,7 @@ def create_app():
     app.register_blueprint(strategy_bp)
     app.register_blueprint(master_contract_status_bp)
     app.register_blueprint(websocket_bp)  # Register WebSocket example blueprint
+    app.register_blueprint(trading_mode_bp)  # Register trading mode blueprint
     
 
     # Exempt webhook endpoints from CSRF protection after app initialization
@@ -223,6 +226,17 @@ def setup_environment(app):
         ensure_traffic_logs_exists()
         ensure_latency_tables_exists()
         ensure_strategy_tables_exists()
+        
+        # Initialize paper trading database if in paper trading mode
+        trading_mode = os.getenv('OPENALGO_TRADING_MODE', 'live').lower()
+        if trading_mode == 'paper':
+            try:
+                from database.paper_trading_db import init_paper_trading_db
+                init_paper_trading_db()
+                logger.info("Paper trading database initialized successfully")
+            except Exception as e:
+                logger.error(f"Failed to initialize paper trading database: {e}")
+                # Don't exit - let the app continue but log the error
 
     # Conditionally setup ngrok in development environment
     if os.getenv('NGROK_ALLOW') == 'TRUE':

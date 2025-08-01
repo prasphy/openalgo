@@ -49,3 +49,4 @@ venv.bak/
 
 # Tailwind CSS output
 # **/output.css
+csrf_test_results_windows.json

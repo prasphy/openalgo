@@ -128,21 +128,21 @@ def load_and_check_env_variables():
     # Define the required environment variables
     required_vars = [
         'ENV_CONFIG_VERSION',  # Version tracking for configuration compatibility
-        'BROKER_API_KEY', 
-        'BROKER_API_SECRET', 
-        'REDIRECT_URL', 
-        'APP_KEY', 
+        'BROKER_API_KEY',
+        'BROKER_API_SECRET',
+        'REDIRECT_URL',
+        'APP_KEY',
         'API_KEY_PEPPER',  # Added API_KEY_PEPPER as it's required for security
         'DATABASE_URL',
-        'NGROK_ALLOW', 
-        'HOST_SERVER', 
-        'FLASK_HOST_IP', 
-        'FLASK_PORT', 
+        'NGROK_ALLOW',
+        'HOST_SERVER',
+        'FLASK_HOST_IP',
+        'FLASK_PORT',
         'FLASK_DEBUG',
         'FLASK_ENV',  # Added FLASK_ENV as it's important for app configuration
-        'LOGIN_RATE_LIMIT_MIN', 
+        'LOGIN_RATE_LIMIT_MIN',
         'LOGIN_RATE_LIMIT_HOUR',
-        'API_RATE_LIMIT', 
+        'API_RATE_LIMIT',
         'ORDER_RATE_LIMIT',  # Rate limit for order placement, modification, and cancellation
         'SMART_ORDER_RATE_LIMIT',  # Rate limit for smart order placement
         'WEBHOOK_RATE_LIMIT',  # Rate limit for webhook endpoints
@@ -156,7 +156,15 @@ def load_and_check_env_variables():
         'LOG_LEVEL',       # Logging level
         'LOG_DIR',         # Directory for log files
         'LOG_FORMAT',      # Log message format
-        'LOG_RETENTION'    # Days to retain log files
+        'LOG_RETENTION',   # Days to retain log files
+        'OPENALGO_TRADING_MODE'     # Trading mode: 'live' or 'paper'
+    ]
+    
+    # Define optional paper trading variables (with defaults)
+    optional_paper_trading_vars = [
+        'PAPER_TRADING_DATABASE_URL',  # Paper trading database URL
+        'PAPER_DEFAULT_BALANCE',       # Default balance for new paper accounts
+        'PAPER_DEFAULT_CURRENCY'       # Default currency for paper accounts
     ]
 
     # Check if each required environment variable is set
@@ -167,6 +175,21 @@ def load_and_check_env_variables():
         print(f"Error: The following environment variables are missing: {missing_list}")
         print("\nSolution: Check .sample.env for the latest configuration format")
         sys.exit(1)
+    
+    # Set defaults for optional paper trading variables if not provided
+    trading_mode = os.getenv('OPENALGO_TRADING_MODE', 'live').lower().strip()
+    
+    # Set paper trading defaults based on trading mode
+    if trading_mode == 'paper':
+        # Set default values for paper trading variables if not specified
+        if not os.getenv('PAPER_TRADING_DATABASE_URL'):
+            os.environ['PAPER_TRADING_DATABASE_URL'] = 'sqlite:///db/paper_trading.db'
+        
+        if not os.getenv('PAPER_DEFAULT_BALANCE'):
+            os.environ['PAPER_DEFAULT_BALANCE'] = '50000.00'
+            
+        if not os.getenv('PAPER_DEFAULT_CURRENCY'):
+            os.environ['PAPER_DEFAULT_CURRENCY'] = 'INR'
 
     # Special validation for broker-specific API key formats
     broker_api_key = os.getenv('BROKER_API_KEY', '')
@@ -374,3 +397,63 @@ def load_and_check_env_variables():
         print("\nError: LOG_FORMAT cannot be empty")
         print("Example: LOG_FORMAT=[%(asctime)s] %(levelname)s in %(module)s: %(message)s")
         sys.exit(1)
+    
+    # Validate OPENALGO_TRADING_MODE
+    trading_mode = os.getenv('OPENALGO_TRADING_MODE', 'live').lower().strip()
+    valid_trading_modes = ['live', 'paper']
+    
+    if trading_mode not in valid_trading_modes:
+        print(f"\nError: Invalid OPENALGO_TRADING_MODE '{trading_mode}'")
+        print(f"OPENALGO_TRADING_MODE must be one of: {', '.join(valid_trading_modes)}")
+        print("Examples:")
+        print("  OPENALGO_TRADING_MODE=live   # For live trading with real money")
+        print("  OPENALGO_TRADING_MODE=paper  # For paper trading simulation")
+        sys.exit(1)
+    
+    # Validate paper trading specific configuration if in paper mode
+    if trading_mode == 'paper':
+        # Validate PAPER_DEFAULT_BALANCE if provided
+        paper_balance = os.getenv('PAPER_DEFAULT_BALANCE')
+        if paper_balance:
+            try:
+                balance = float(paper_balance)
+                if balance <= 0:
+                    raise ValueError
+            except ValueError:
+                print("\nError: PAPER_DEFAULT_BALANCE must be a positive number")
+                print("Example: PAPER_DEFAULT_BALANCE=50000.00")
+                sys.exit(1)
+        
+        # Validate PAPER_DEFAULT_CURRENCY if provided
+        paper_currency = os.getenv('PAPER_DEFAULT_CURRENCY', '').upper().strip()
+        if paper_currency:
+            valid_currencies = ['INR', 'USD', 'EUR', 'GBP', 'JPY', 'CAD', 'AUD', 'CHF']
+            if paper_currency not in valid_currencies:
+                print(f"\nError: Invalid PAPER_DEFAULT_CURRENCY '{paper_currency}'")
+                print(f"Supported currencies: {', '.join(valid_currencies)}")
+                print("Example: PAPER_DEFAULT_CURRENCY=INR")
+                sys.exit(1)
+                
+        # Validate PAPER_TRADING_DATABASE_URL format if provided
+        paper_db_url = os.getenv('PAPER_TRADING_DATABASE_URL')
+        if paper_db_url and not (paper_db_url.startswith('sqlite:///') or
+                                paper_db_url.startswith('postgresql://') or
+                                paper_db_url.startswith('mysql://')):
+            print("\nError: Invalid PAPER_TRADING_DATABASE_URL format")
+            print("Supported formats:")
+            print("  sqlite:///path/to/database.db")
+            print("  postgresql://user:pass@host:port/dbname")
+            print("  mysql://user:pass@host:port/dbname")
+            print("Example: PAPER_TRADING_DATABASE_URL=sqlite:///db/paper_trading.db")
+            sys.exit(1)
+        
+        # Print paper trading mode confirmation
+        print(f"\n📄 Paper Trading Mode Enabled")
+        print(f"   Default Balance: {os.getenv('PAPER_DEFAULT_BALANCE')} {os.getenv('PAPER_DEFAULT_CURRENCY')}")
+        print(f"   Database URL: {os.getenv('PAPER_TRADING_DATABASE_URL')}")
+        print("   ⚠️  No real money will be used - this is simulation mode")
+        
+    else:
+        # Live trading mode
+        print(f"\n💰 Live Trading Mode Enabled")
+        print("   ⚠️  CAUTION: Real money trading is active!")

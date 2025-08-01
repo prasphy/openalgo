@@ -176,21 +176,46 @@ def place_order_with_auth(
         
         return True, response_data, 200
 
-    # If not in analyze mode, proceed with actual order placement
-    broker_module = import_broker_module(broker)
-    if broker_module is None:
-        error_response = {
-            'status': 'error',
-            'message': 'Broker-specific module not found'
-        }
-        executor.submit(async_log_order, 'placeorder', original_data, error_response)
-        return False, error_response, 404
-
+    # Use trading service factory to get appropriate implementation (paper or live)
     try:
-        # Call the broker's place_order_api function
-        res, response_data, order_id = broker_module.place_order_api(order_data, auth_token)
+        from services.trading_service_factory import get_trading_service
+        from database.auth_db import verify_api_key
+        
+        # Extract user_id from auth token context
+        # For now, we'll use a simple approach - in production, this should be more robust
+        user_id = "default_user"  # This should be extracted from session or auth context
+        
+        # Get the appropriate trading service (paper or live)
+        trading_service = get_trading_service(user_id, broker)
+        
+        # Call the trading service
+        success, response_data, status_code = trading_service.place_order(order_data, auth_token)
+        
+        # Log the result
+        if success:
+            executor.submit(async_log_order, 'placeorder', order_request_data, response_data)
+            
+            # Emit socket event for successful orders
+            if 'orderid' in response_data:
+                # Determine mode for socket event
+                mode = 'paper' if 'paper' in str(type(trading_service)).lower() else 'live'
+                
+                socketio.emit('order_event', {
+                    'symbol': order_data['symbol'],
+                    'action': order_data['action'],
+                    'orderid': response_data['orderid'],
+                    'exchange': order_data.get('exchange', 'Unknown'),
+                    'price_type': order_data.get('pricetype', 'Unknown'),
+                    'product_type': order_data.get('product', 'Unknown'),
+                    'mode': mode
+                })
+        else:
+            executor.submit(async_log_order, 'placeorder', original_data, response_data)
+        
+        return success, response_data, status_code
+        
     except Exception as e:
-        logger.error(f"Error in broker_module.place_order_api: {e}")
+        logger.error(f"Error in trading service: {e}")
         traceback.print_exc()
         error_response = {
             'status': 'error',
@@ -198,28 +223,6 @@ def place_order_with_auth(
         }
         executor.submit(async_log_order, 'placeorder', original_data, error_response)
         return False, error_response, 500
-
-    if res.status == 200:
-        socketio.emit('order_event', {
-            'symbol': order_data['symbol'],
-            'action': order_data['action'],
-            'orderid': order_id,
-            'exchange': order_data.get('exchange', 'Unknown'),
-            'price_type': order_data.get('price_type', 'Unknown'),
-            'product_type': order_data.get('product_type', 'Unknown'),
-            'mode': 'live'
-        })
-        order_response_data = {'status': 'success', 'orderid': order_id}
-        executor.submit(async_log_order, 'placeorder', order_request_data, order_response_data)
-        return True, order_response_data, 200
-    else:
-        message = response_data.get('message', 'Failed to place order') if isinstance(response_data, dict) else 'Failed to place order'
-        error_response = {
-            'status': 'error',
-            'message': message
-        }
-        executor.submit(async_log_order, 'placeorder', original_data, error_response)
-        return False, error_response, res.status if res.status != 200 else 500
 
 def place_order(
     order_data: Dict[str, Any],

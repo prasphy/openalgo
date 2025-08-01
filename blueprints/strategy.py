@@ -782,8 +782,16 @@ def execute_custom_strategy(webhook_id):
         if execution_mode not in ['immediate', 'queue', 'schedule']:
             return jsonify({'error': 'Invalid execution mode'}), 400
         
-        # Get additional parameters from request
-        strategy_params = request.json if request.is_json else {}
+        # Get additional parameters from request with proper error handling
+        strategy_params = {}
+        if request.is_json:
+            try:
+                strategy_params = request.get_json() or {}
+            except Exception as e:
+                logger.error(f"Error parsing JSON data: {str(e)}")
+                return jsonify({'error': 'Invalid JSON data'}), 400
+        elif request.form:
+            strategy_params = request.form.to_dict()
         
         # Import and get strategy executor
         from custom_strategies import get_strategy_executor
@@ -802,7 +810,7 @@ def execute_custom_strategy(webhook_id):
                 
                 return jsonify({
                     'status': 'success',
-                    'message': f'Strategy executed successfully',
+                    'message': 'Strategy executed successfully',
                     'signals': result.signals,
                     'execution_time': result.execution_time,
                     'orders_placed': len(order_results),
@@ -1013,9 +1021,13 @@ def webhook(webhook_id):
             current_time = now.strftime('%H:%M')
             
             # Determine if this is an entry or exit order
-            data = request.get_json()
-            if not data:
-                return jsonify({'error': 'No data received'}), 400
+            try:
+                data = request.get_json()
+                if not data:
+                    return jsonify({'error': 'No data received'}), 400
+            except Exception as e:
+                logger.error(f"Error parsing webhook JSON data: {str(e)}")
+                return jsonify({'error': 'Invalid JSON data in webhook'}), 400
             
             action = data['action'].upper()
             position_size = int(data.get('position_size', 0))
@@ -1045,9 +1057,13 @@ def webhook(webhook_id):
                     return jsonify({'error': 'Exit orders not allowed after square off time'}), 400
         
         # Parse webhook data
-        data = request.get_json()
-        if not data:
-            return jsonify({'error': 'No data received'}), 400
+        try:
+            data = request.get_json()
+            if not data:
+                return jsonify({'error': 'No data received'}), 400
+        except Exception as e:
+            logger.error(f"Error parsing webhook JSON data: {str(e)}")
+            return jsonify({'error': 'Invalid JSON data in webhook'}), 400
         
         # Validate required fields
         required_fields = ['symbol', 'action']

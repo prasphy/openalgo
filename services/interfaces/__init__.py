@@ -1,0 +1,3 @@
+"""
+Trading service interfaces module.
+"""

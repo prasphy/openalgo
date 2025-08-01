@@ -113,18 +113,6 @@ def orderbook():
         logger.error("Broker not set in session")
         return "Broker not set in session", 400
 
-    # Dynamically import broker-specific modules for API and mapping
-    api_funcs = dynamic_import(broker, 'api.order_api', ['get_order_book'])
-    mapping_funcs = dynamic_import(broker, 'mapping.order_data', [
-        'calculate_order_statistics', 'map_order_data', 
-        'transform_order_data'
-    ])
-
-    if not api_funcs or not mapping_funcs:
-        logger.error(f"Error loading broker-specific modules for {broker}")
-        return "Error loading broker-specific modules", 500
-
-    # Static import used for auth token retrieval
     login_username = session['user']
     auth_token = get_auth_token(login_username)
 
@@ -132,19 +120,50 @@ def orderbook():
         logger.warning(f"No auth token found for user {login_username}")
         return redirect(url_for('auth.logout'))
 
-    order_data = api_funcs['get_order_book'](auth_token)
-    logger.debug(f"Order data received: {order_data}")
-    
-    if 'status' in order_data:
-        if order_data['status'] == 'error':
-            logger.error("Error in order data response")
-            return redirect(url_for('auth.logout'))
-
-    order_data = mapping_funcs['map_order_data'](order_data=order_data)
-    order_stats = mapping_funcs['calculate_order_statistics'](order_data)
-    order_data = mapping_funcs['transform_order_data'](order_data)
-
-    return render_template('orderbook.html', order_data=order_data, order_stats=order_stats)
+    # Use TradingDataService instead of direct broker API calls
+    try:
+        from services.trading_data_service import get_orderbook_data
+        success, order_data, status_code = get_orderbook_data(login_username, broker, auth_token)
+        
+        if not success:
+            logger.error(f"Error retrieving orderbook data: {order_data.get('message', 'Unknown error')}")
+            if status_code == 401:
+                return redirect(url_for('auth.logout'))
+            return "Error retrieving orderbook data", status_code
+            
+        # Extract order data from response
+        order_list = order_data.get('data', [])
+        total_orders = order_data.get('total_orders', 0)
+        
+        # Apply existing mapping functions for UI compatibility
+        # Dynamically import broker-specific mapping functions for additional transformations
+        mapping_funcs = dynamic_import(broker, 'mapping.order_data', [
+            'calculate_order_statistics', 'map_order_data',
+            'transform_order_data'
+        ])
+        
+        if mapping_funcs:
+            # Apply mapping functions if available
+            map_order_data = mapping_funcs['map_order_data']
+            calculate_order_statistics = mapping_funcs['calculate_order_statistics']
+            transform_order_data = mapping_funcs['transform_order_data']
+            order_list = map_order_data(order_data=order_list)
+            order_stats = calculate_order_statistics(order_list)
+            order_list = transform_order_data(order_list)
+        else:
+            # Default statistics if no mapping functions available
+            order_stats = {
+                'total_orders': total_orders,
+                'completed_orders': 0,
+                'pending_orders': 0,
+                'cancelled_orders': 0
+            }
+        
+        return render_template('orderbook.html', order_data=order_list, order_stats=order_stats)
+        
+    except Exception as e:
+        logger.error(f"Error in orderbook endpoint: {str(e)}")
+        return "Error retrieving orderbook data", 500
 
 @orders_bp.route('/tradebook')
 @check_session_validity
@@ -154,16 +173,6 @@ def tradebook():
         logger.error("Broker not set in session")
         return "Broker not set in session", 400
 
-    # Dynamically import broker-specific modules for API and mapping
-    api_funcs = dynamic_import(broker, 'api.order_api', ['get_trade_book'])
-    mapping_funcs = dynamic_import(broker, 'mapping.order_data', [
-        'map_trade_data', 'transform_tradebook_data'
-    ])
-
-    if not api_funcs or not mapping_funcs:
-        logger.error(f"Error loading broker-specific modules for {broker}")
-        return "Error loading broker-specific modules", 500
-
     login_username = session['user']
     auth_token = get_auth_token(login_username)
 
@@ -171,23 +180,40 @@ def tradebook():
         logger.warning(f"No auth token found for user {login_username}")
         return redirect(url_for('auth.logout'))
 
-    # Using the dynamically imported `get_trade_book` function
-    get_trade_book = api_funcs['get_trade_book']
-    tradebook_data = get_trade_book(auth_token)
-    logger.debug(f"Tradebook data received: {tradebook_data}")
-  
-    if 'status' in tradebook_data and tradebook_data['status'] == 'error':
-        logger.error("Error in tradebook data response")
-        return redirect(url_for('auth.logout'))
-
-    # Using the dynamically imported mapping functions
-    map_trade_data = mapping_funcs['map_trade_data']
-    transform_tradebook_data = mapping_funcs['transform_tradebook_data']
-
-    tradebook_data = map_trade_data(trade_data=tradebook_data)
-    tradebook_data = transform_tradebook_data(tradebook_data)
-
-    return render_template('tradebook.html', tradebook_data=tradebook_data)
+    # Use TradingDataService instead of direct broker API calls
+    try:
+        from services.trading_data_service import get_tradebook_data
+        success, tradebook_data, status_code = get_tradebook_data(login_username, broker, auth_token)
+        
+        if not success:
+            logger.error(f"Error retrieving tradebook data: {tradebook_data.get('message', 'Unknown error')}")
+            if status_code == 401:
+                return redirect(url_for('auth.logout'))
+            return "Error retrieving tradebook data", status_code
+            
+        # Extract trade data from response
+        trade_list = tradebook_data.get('data', [])
+        total_trades = tradebook_data.get('total_trades', 0)
+        total_volume = tradebook_data.get('total_volume', 0)
+        
+        # Apply existing mapping functions for UI compatibility
+        # Dynamically import broker-specific mapping functions for additional transformations
+        mapping_funcs = dynamic_import(broker, 'mapping.order_data', [
+            'map_trade_data', 'transform_tradebook_data'
+        ])
+        
+        if mapping_funcs:
+            # Apply mapping functions if available
+            map_trade_data = mapping_funcs['map_trade_data']
+            transform_tradebook_data = mapping_funcs['transform_tradebook_data']
+            trade_list = map_trade_data(trade_data=trade_list)
+            trade_list = transform_tradebook_data(trade_list)
+        
+        return render_template('tradebook.html', tradebook_data=trade_list)
+        
+    except Exception as e:
+        logger.error(f"Error in tradebook endpoint: {str(e)}")
+        return "Error retrieving tradebook data", 500
 
 @orders_bp.route('/positions')
 @check_session_validity
@@ -197,16 +223,6 @@ def positions():
         logger.error("Broker not set in session")
         return "Broker not set in session", 400
 
-    # Dynamically import broker-specific modules for API and mapping
-    api_funcs = dynamic_import(broker, 'api.order_api', ['get_positions'])
-    mapping_funcs = dynamic_import(broker, 'mapping.order_data', [
-        'map_position_data', 'transform_positions_data'
-    ])
-
-    if not api_funcs or not mapping_funcs:
-        logger.error(f"Error loading broker-specific modules for {broker}")
-        return "Error loading broker-specific modules", 500
-
     login_username = session['user']
     auth_token = get_auth_token(login_username)
 
@@ -214,23 +230,48 @@ def positions():
         logger.warning(f"No auth token found for user {login_username}")
         return redirect(url_for('auth.logout'))
 
-    # Using the dynamically imported `get_positions` function
-    get_positions = api_funcs['get_positions']
-    positions_data = get_positions(auth_token)
-    logger.debug(f"Positions data received: {positions_data}")
-   
-    if 'status' in positions_data and positions_data['status'] == 'error':
-        logger.error("Error in positions data response")
-        return redirect(url_for('auth.logout'))
-
-    # Using the dynamically imported mapping functions
-    map_position_data = mapping_funcs['map_position_data']
-    transform_positions_data = mapping_funcs['transform_positions_data']
-
-    positions_data = map_position_data(positions_data)
-    positions_data = transform_positions_data(positions_data)
-    
-    return render_template('positions.html', positions_data=positions_data)
+    # Use TradingDataService instead of direct broker API calls
+    try:
+        from services.trading_data_service import get_positions_data
+        success, positions_data, status_code = get_positions_data(login_username, broker, auth_token)
+        
+        if not success:
+            logger.error(f"Error retrieving positions data: {positions_data.get('message', 'Unknown error')}")
+            if status_code == 401:
+                return redirect(url_for('auth.logout'))
+            return "Error retrieving positions data", status_code
+            
+        # Extract positions data from response
+        positions_list = positions_data.get('data', [])
+        total_pnl = positions_data.get('total_pnl', 0.0)
+        total_investment = positions_data.get('total_investment', 0.0)
+        total_current_value = positions_data.get('total_current_value', 0.0)
+        
+        # Apply existing mapping functions for UI compatibility
+        # Dynamically import broker-specific mapping functions for additional transformations
+        mapping_funcs = dynamic_import(broker, 'mapping.order_data', [
+            'map_position_data', 'transform_positions_data'
+        ])
+        
+        if mapping_funcs:
+            # Apply mapping functions if available
+            map_position_data = mapping_funcs['map_position_data']
+            transform_positions_data = mapping_funcs['transform_positions_data']
+            positions_list = map_position_data(positions_list)
+            positions_list = transform_positions_data(positions_list)
+        
+        # Add summary data to positions list for template compatibility
+        positions_summary = {
+            'total_pnl': total_pnl,
+            'total_investment': total_investment,
+            'total_current_value': total_current_value
+        }
+        
+        return render_template('positions.html', positions_data=positions_list, positions_summary=positions_summary)
+        
+    except Exception as e:
+        logger.error(f"Error in positions endpoint: {str(e)}")
+        return "Error retrieving positions data", 500
 
 @orders_bp.route('/holdings')
 @check_session_validity
@@ -240,16 +281,6 @@ def holdings():
         logger.error("Broker not set in session")
         return "Broker not set in session", 400
 
-    # Dynamically import broker-specific modules for API and mapping
-    api_funcs = dynamic_import(broker, 'api.order_api', ['get_holdings'])
-    mapping_funcs = dynamic_import(broker, 'mapping.order_data', [
-        'map_portfolio_data', 'calculate_portfolio_statistics', 'transform_holdings_data'
-    ])
-
-    if not api_funcs or not mapping_funcs:
-        logger.error(f"Error loading broker-specific modules for {broker}")
-        return "Error loading broker-specific modules", 500
-
     login_username = session['user']
     auth_token = get_auth_token(login_username)
 
@@ -257,25 +288,51 @@ def holdings():
         logger.warning(f"No auth token found for user {login_username}")
         return redirect(url_for('auth.logout'))
 
-    # Using the dynamically imported `get_holdings` function
-    get_holdings = api_funcs['get_holdings']
-    holdings_data = get_holdings(auth_token)
-    logger.debug(f"Holdings data received: {holdings_data}")
-
-    if 'status' in holdings_data and holdings_data['status'] == 'error':
-        logger.error("Error in holdings data response")
-        return redirect(url_for('auth.logout'))
-
-    # Using the dynamically imported mapping functions
-    map_portfolio_data = mapping_funcs['map_portfolio_data']
-    calculate_portfolio_statistics = mapping_funcs['calculate_portfolio_statistics']
-    transform_holdings_data = mapping_funcs['transform_holdings_data']
-
-    holdings_data = map_portfolio_data(holdings_data)
-    portfolio_stats = calculate_portfolio_statistics(holdings_data)
-    holdings_data = transform_holdings_data(holdings_data)
-    
-    return render_template('holdings.html', holdings_data=holdings_data, portfolio_stats=portfolio_stats)
+    # Use TradingDataService instead of direct broker API calls
+    try:
+        from services.trading_data_service import get_holdings_data
+        success, holdings_data, status_code = get_holdings_data(login_username, broker, auth_token)
+        
+        if not success:
+            logger.error(f"Error retrieving holdings data: {holdings_data.get('message', 'Unknown error')}")
+            if status_code == 401:
+                return redirect(url_for('auth.logout'))
+            return "Error retrieving holdings data", status_code
+            
+        # Extract holdings data from response
+        holdings_list = holdings_data.get('data', [])
+        total_investment = holdings_data.get('total_investment', 0.0)
+        total_current_value = holdings_data.get('total_current_value', 0.0)
+        total_pnl = holdings_data.get('total_pnl', 0.0)
+        
+        # Apply existing mapping functions for UI compatibility
+        # Dynamically import broker-specific mapping functions for additional transformations
+        mapping_funcs = dynamic_import(broker, 'mapping.order_data', [
+            'map_portfolio_data', 'calculate_portfolio_statistics', 'transform_holdings_data'
+        ])
+        
+        if mapping_funcs:
+            # Apply mapping functions if available
+            map_portfolio_data = mapping_funcs['map_portfolio_data']
+            calculate_portfolio_statistics = mapping_funcs['calculate_portfolio_statistics']
+            transform_holdings_data = mapping_funcs['transform_holdings_data']
+            holdings_list = map_portfolio_data(holdings_list)
+            portfolio_stats = calculate_portfolio_statistics(holdings_list)
+            holdings_list = transform_holdings_data(holdings_list)
+        else:
+            # Default statistics if no mapping functions available
+            portfolio_stats = {
+                'total_investment': total_investment,
+                'total_current_value': total_current_value,
+                'total_pnl': total_pnl,
+                'pnl_percentage': 0.0
+            }
+        
+        return render_template('holdings.html', holdings_data=holdings_list, portfolio_stats=portfolio_stats)
+        
+    except Exception as e:
+        logger.error(f"Error in holdings endpoint: {str(e)}")
+        return "Error retrieving holdings data", 500
 
 @orders_bp.route('/orderbook/export')
 @check_session_validity
@@ -286,13 +343,6 @@ def export_orderbook():
             logger.error("Broker not set in session")
             return "Broker not set in session", 400
 
-        api_funcs = dynamic_import(broker, 'api.order_api', ['get_order_book'])
-        mapping_funcs = dynamic_import(broker, 'mapping.order_data', ['map_order_data', 'transform_order_data'])
-
-        if not api_funcs or not mapping_funcs:
-            logger.error(f"Error loading broker-specific modules for {broker}")
-            return "Error loading broker-specific modules", 500
-
         login_username = session['user']
         auth_token = get_auth_token(login_username)
 
@@ -300,15 +350,31 @@ def export_orderbook():
             logger.warning(f"No auth token found for user {login_username}")
             return redirect(url_for('auth.logout'))
 
-        order_data = api_funcs['get_order_book'](auth_token)
-        if 'status' in order_data and order_data['status'] == 'error':
-            logger.error("Error in order data response")
-            return redirect(url_for('auth.logout'))
+        # Use TradingDataService instead of direct broker API calls
+        from services.trading_data_service import get_orderbook_data
+        success, order_data, status_code = get_orderbook_data(login_username, broker, auth_token)
+        
+        if not success:
+            logger.error(f"Error retrieving orderbook data: {order_data.get('message', 'Unknown error')}")
+            if status_code == 401:
+                return redirect(url_for('auth.logout'))
+            return "Error retrieving orderbook data", status_code
+            
+        # Extract order data from response
+        order_list = order_data.get('data', [])
+        
+        # Apply existing mapping functions for UI compatibility
+        # Dynamically import broker-specific mapping functions for additional transformations
+        mapping_funcs = dynamic_import(broker, 'mapping.order_data', ['map_order_data', 'transform_order_data'])
+        
+        if mapping_funcs:
+            # Apply mapping functions if available
+            map_order_data = mapping_funcs['map_order_data']
+            transform_order_data = mapping_funcs['transform_order_data']
+            order_list = map_order_data(order_data=order_list)
+            order_list = transform_order_data(order_list)
 
-        order_data = mapping_funcs['map_order_data'](order_data=order_data)
-        order_data = mapping_funcs['transform_order_data'](order_data)
-
-        csv_data = generate_orderbook_csv(order_data)
+        csv_data = generate_orderbook_csv(order_list)
         return Response(
             csv_data,
             mimetype='text/csv',
@@ -327,13 +393,6 @@ def export_tradebook():
             logger.error("Broker not set in session")
             return "Broker not set in session", 400
 
-        api_funcs = dynamic_import(broker, 'api.order_api', ['get_trade_book'])
-        mapping_funcs = dynamic_import(broker, 'mapping.order_data', ['map_trade_data', 'transform_tradebook_data'])
-
-        if not api_funcs or not mapping_funcs:
-            logger.error(f"Error loading broker-specific modules for {broker}")
-            return "Error loading broker-specific modules", 500
-
         login_username = session['user']
         auth_token = get_auth_token(login_username)
 
@@ -341,15 +400,31 @@ def export_tradebook():
             logger.warning(f"No auth token found for user {login_username}")
             return redirect(url_for('auth.logout'))
 
-        tradebook_data = api_funcs['get_trade_book'](auth_token)
-        if 'status' in tradebook_data and tradebook_data['status'] == 'error':
-            logger.error("Error in tradebook data response")
-            return redirect(url_for('auth.logout'))
+        # Use TradingDataService instead of direct broker API calls
+        from services.trading_data_service import get_tradebook_data
+        success, tradebook_data, status_code = get_tradebook_data(login_username, broker, auth_token)
+        
+        if not success:
+            logger.error(f"Error retrieving tradebook data: {tradebook_data.get('message', 'Unknown error')}")
+            if status_code == 401:
+                return redirect(url_for('auth.logout'))
+            return "Error retrieving tradebook data", status_code
+            
+        # Extract trade data from response
+        trade_list = tradebook_data.get('data', [])
+        
+        # Apply existing mapping functions for UI compatibility
+        # Dynamically import broker-specific mapping functions for additional transformations
+        mapping_funcs = dynamic_import(broker, 'mapping.order_data', ['map_trade_data', 'transform_tradebook_data'])
+        
+        if mapping_funcs:
+            # Apply mapping functions if available
+            map_trade_data = mapping_funcs['map_trade_data']
+            transform_tradebook_data = mapping_funcs['transform_tradebook_data']
+            trade_list = map_trade_data(trade_data=trade_list)
+            trade_list = transform_tradebook_data(trade_list)
 
-        tradebook_data = mapping_funcs['map_trade_data'](tradebook_data)
-        tradebook_data = mapping_funcs['transform_tradebook_data'](tradebook_data)
-
-        csv_data = generate_tradebook_csv(tradebook_data)
+        csv_data = generate_tradebook_csv(trade_list)
         return Response(
             csv_data,
             mimetype='text/csv',
@@ -368,15 +443,6 @@ def export_positions():
             logger.error("Broker not set in session")
             return "Broker not set in session", 400
 
-        api_funcs = dynamic_import(broker, 'api.order_api', ['get_positions'])
-        mapping_funcs = dynamic_import(broker, 'mapping.order_data', [
-            'map_position_data', 'transform_positions_data'
-        ])
-
-        if not api_funcs or not mapping_funcs:
-            logger.error(f"Error loading broker-specific modules for {broker}")
-            return "Error loading broker-specific modules", 500
-
         login_username = session['user']
         auth_token = get_auth_token(login_username)
 
@@ -384,15 +450,33 @@ def export_positions():
             logger.warning(f"No auth token found for user {login_username}")
             return redirect(url_for('auth.logout'))
 
-        positions_data = api_funcs['get_positions'](auth_token)
-        if 'status' in positions_data and positions_data['status'] == 'error':
-            logger.error("Error in positions data response")
-            return redirect(url_for('auth.logout'))
+        # Use TradingDataService instead of direct broker API calls
+        from services.trading_data_service import get_positions_data
+        success, positions_data, status_code = get_positions_data(login_username, broker, auth_token)
+        
+        if not success:
+            logger.error(f"Error retrieving positions data: {positions_data.get('message', 'Unknown error')}")
+            if status_code == 401:
+                return redirect(url_for('auth.logout'))
+            return "Error retrieving positions data", status_code
+            
+        # Extract positions data from response
+        positions_list = positions_data.get('data', [])
+        
+        # Apply existing mapping functions for UI compatibility
+        # Dynamically import broker-specific mapping functions for additional transformations
+        mapping_funcs = dynamic_import(broker, 'mapping.order_data', [
+            'map_position_data', 'transform_positions_data'
+        ])
+        
+        if mapping_funcs:
+            # Apply mapping functions if available
+            map_position_data = mapping_funcs['map_position_data']
+            transform_positions_data = mapping_funcs['transform_positions_data']
+            positions_list = map_position_data(positions_list)
+            positions_list = transform_positions_data(positions_list)
 
-        positions_data = mapping_funcs['map_position_data'](positions_data)
-        positions_data = mapping_funcs['transform_positions_data'](positions_data)
-
-        csv_data = generate_positions_csv(positions_data)
+        csv_data = generate_positions_csv(positions_list)
         return Response(
             csv_data,
             mimetype='text/csv',
